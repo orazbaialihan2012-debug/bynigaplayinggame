@@ -1,0 +1,75 @@
+-- ПК мен Мобайл үшін әмбебап Жұмсақ бұрылыс (Smooth Rotation) скрипті
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Бұрынғы байланысты ажырату
+if _G.CameraBypassConnection then 
+    _G.CameraBypassConnection:Disconnect() 
+end
+
+local currentRoot = nil
+local currentHumanoid = nil
+local targetRotation = CFrame.new()
+
+local function onCharacterAdded(char)
+    currentRoot = char:WaitForChild("HumanoidRootPart", 5)
+    currentHumanoid = char:WaitForChild("Humanoid", 5)
+    
+    if currentHumanoid then
+        -- Өздігінен кенет бұрылуды тоқтату
+        currentHumanoid.AutoRotate = false 
+    end
+    if currentRoot then
+        targetRotation = currentRoot.CFrame.Rotation
+    end
+end
+
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+_G.CameraBypassConnection = LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+-- Metatable арқылы бұйрықтарды ұстап алу (Hooking)
+local success, err = pcall(function()
+    local mt = getrawmetatable(game)
+    local oldNewIndex = mt.__newindex
+    setreadonly(mt, false)
+
+    mt.__newindex = newcclosure(function(t, k, v)
+        if currentRoot and t == currentRoot and k == "CFrame" and typeof(v) == "CFrame" then
+            if currentHumanoid then
+                -- Арена тарапынан болатын кенет бұрылыстарды бұғаттап, тек жұмсақ бұрылысты қолдану
+                return oldNewIndex(t, k, CFrame.new(v.Position) * targetRotation)
+            end
+        end
+        return oldNewIndex(t, k, v)
+    end)
+
+    setreadonly(mt, true)
+end)
+
+if not success then
+    warn("Metatable hook қолдау таппады, стандартты режим іске қосылды.")
+end
+
+-- Бұрылысты әр кадр сайын математикалық түрде жұмсарту (Smooth Lerp)
+RunService.RenderStepped:Connect(function(deltaTime)
+    if workspace.CurrentCamera and workspace.CurrentCamera.CameraType ~= Enum.CameraType.Custom then
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    end
+
+    if currentRoot and currentHumanoid and currentHumanoid.MoveDirection.Magnitude > 0 then
+        local moveDir = currentHumanoid.MoveDirection
+        local angle = math.atan2(-moveDir.X, -moveDir.Z)
+        local rawTarget = CFrame.Angles(0, angle, 0)
+        
+        -- Қозғалыс жылдамдығына қарай бұрылу тегістігі (0.15 — оңтайлы мән)
+        targetRotation = targetRotation:Lerp(rawTarget, 0.15)
+        
+        -- Кейіпкердің позициясын сақтай отырып, бұрылысты жаңарту
+        currentRoot.CFrame = CFrame.new(currentRoot.Position) * targetRotation
+    end
+end)
+
+print("Жұмсақ қозғалыс скрипті (PC & Mobile) сәтті қосылды!")
